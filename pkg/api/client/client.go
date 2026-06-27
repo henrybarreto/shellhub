@@ -34,6 +34,9 @@ type publicAPI interface {
 	// NewReverseListenerV2 creates a new reverse listener to be used by the Agent to connect to ShellHub's SSH server
 	// using Yamux protocol.
 	NewReverseListenerV2(ctx context.Context, token string, path string, cfg *ReverseListenerV2Config) (net.Listener, error)
+	// NewReverseListenerV3 creates a new reverse listener to be used by the Agent to connect to ShellHub's SSH server
+	// using native kernel SCTP multi-streaming.
+	NewReverseListenerV3(ctx context.Context, token, addr string) (net.Listener, error)
 }
 
 type Client interface {

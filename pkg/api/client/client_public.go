@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,7 +13,9 @@ import (
 
 	resty "github.com/go-resty/resty/v2"
 	"github.com/hashicorp/yamux"
+	"github.com/ishidawataru/sctp"
 	"github.com/shellhub-io/shellhub/pkg/models"
+	"github.com/shellhub-io/shellhub/pkg/sctpadapter"
 	"github.com/shellhub-io/shellhub/pkg/wsconnadapter"
 	log "github.com/sirupsen/logrus"
 )
@@ -271,4 +275,53 @@ func (c *client) NewReverseListenerV2(ctx context.Context, token string, path st
 	}
 
 	return listener, err
+}
+
+func (c *client) NewReverseListenerV3(ctx context.Context, token, addr string) (net.Listener, error) {
+	raddr, err := sctp.ResolveSCTPAddr("sctp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("sctp: resolve %s: %w", addr, err)
+	}
+
+	conn, err := sctp.DialSCTPExt(
+		"sctp",
+		nil,
+		raddr,
+		sctp.InitMsg{
+			NumOstreams:  sctpadapter.MaxStreams,
+			MaxInstreams: sctpadapter.MaxStreams,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("sctp: dial %s: %w", addr, err)
+	}
+
+	payload := map[string]interface{}{
+		"token": token,
+	}
+
+	if err := json.NewEncoder(conn).Encode(payload); err != nil {
+		conn.Close()
+
+		return nil, fmt.Errorf("sctp: send auth payload: %w", err)
+	}
+
+	conn.SetDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
+
+	var ack map[string]string
+	if err := json.NewDecoder(conn).Decode(&ack); err != nil {
+		conn.Close()
+
+		return nil, fmt.Errorf("sctp: read auth ack: %w", err)
+	}
+
+	conn.SetDeadline(time.Time{}) //nolint:errcheck
+
+	if ack["status"] != "ok" {
+		conn.Close()
+
+		return nil, fmt.Errorf("sctp: auth rejected by server: %s", ack["status"])
+	}
+
+	return sctpadapter.NewMux(conn), nil
 }

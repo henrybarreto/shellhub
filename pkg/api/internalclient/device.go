@@ -30,6 +30,11 @@ type deviceAPI interface {
 
 	// LookupWebEndpoints retrieves a web endpoint by its address.
 	LookupWebEndpoints(ctx context.Context, address string) (*WebEndpoint, error)
+
+	// ValidateDeviceToken validates a device bearer token via the internal auth
+	// endpoint (the same one nginx calls for V1/V2 agent connections) and returns
+	// the device UID and tenant ID on success.
+	ValidateDeviceToken(ctx context.Context, token string) (uid, tenantID string, err error)
 }
 
 func (c *client) DevicesOffline(ctx context.Context, uid string) error {
@@ -133,6 +138,22 @@ type WebEndpoint struct {
 	TLS        WebEndpointTLS `json:"tls"`
 	ExpiresIn  time.Time      `json:"expires_in"`
 	CreatedAt  time.Time      `json:"time" bson:"time"`
+}
+
+func (c *client) ValidateDeviceToken(ctx context.Context, token string) (string, string, error) {
+	resp, err := c.http.
+		R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+token).
+		Get(c.config.APIBaseURL + "/internal/auth")
+	if err := HasError(resp, err); err != nil {
+		return "", "", err
+	}
+
+	uid := resp.Header().Get("X-Device-UID")
+	tenantID := resp.Header().Get("X-Tenant-ID")
+
+	return uid, tenantID, nil
 }
 
 func (c *client) LookupWebEndpoints(ctx context.Context, address string) (*WebEndpoint, error) {

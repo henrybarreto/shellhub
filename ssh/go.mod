@@ -37,6 +37,7 @@ require (
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hibiken/asynq v0.24.1 // indirect
+	github.com/ishidawataru/sctp v0.0.0-20251114114122-19ddcbc6aae2 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/leodido/go-urn v1.2.2 // indirect

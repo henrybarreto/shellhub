@@ -12,6 +12,8 @@ services:
       - ./ssh:/go/src/github.com/shellhub-io/shellhub/ssh
       - ./pkg:/go/src/github.com/shellhub-io/shellhub/pkg
       - ./.golangci.yaml:/.golangci.yaml
+    cap_add:
+      - NET_ADMIN
     environment:
       - SHELLHUB_ENTERPRISE=${SHELLHUB_ENTERPRISE}
       - SHELLHUB_CLOUD=${SHELLHUB_CLOUD}
@@ -39,6 +41,7 @@ services:
       - SHELLHUB_ENTERPRISE=${SHELLHUB_ENTERPRISE}
       - SHELLHUB_CLOUD=${SHELLHUB_CLOUD}
       - SHELLHUB_ENV=${SHELLHUB_ENV}
+      - SHELLHUB_SCTP_HOST=ssh
   ui:
     image: ui
     build:

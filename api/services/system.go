@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -26,13 +27,28 @@ func (s *service) GetSystemInfo(ctx context.Context, req *requests.GetSystemInfo
 
 	apiHost := strings.Split(req.Host, ":")[0]
 	sshPort := envs.DefaultBackend.Get("SHELLHUB_SSH_PORT")
+	sctpPort := envs.DefaultBackend.Get("SHELLHUB_SCTP_PORT")
+
+	// SHELLHUB_SCTP_HOST overrides the host used in the SCTP endpoint. If the
+	// value is a hostname (e.g. a Docker service name), it is resolved to an IP
+	// so that agents can reach the SSH container directly without going through
+	// any userspace port proxy.
+	sctpHost := apiHost
+	if override := envs.DefaultBackend.Get("SHELLHUB_SCTP_HOST"); override != "" {
+		if addrs, err := net.LookupHost(override); err == nil && len(addrs) > 0 {
+			sctpHost = addrs[0]
+		} else {
+			sctpHost = override
+		}
+	}
 
 	resp := &responses.SystemInfo{
 		Version: envs.DefaultBackend.Get("SHELLHUB_VERSION"),
 		Setup:   system.Setup,
 		Endpoints: &responses.SystemEndpointsInfo{
-			API: apiHost,
-			SSH: fmt.Sprintf("%s:%s", apiHost, sshPort),
+			API:  apiHost,
+			SSH:  fmt.Sprintf("%s:%s", apiHost, sshPort),
+			SCTP: fmt.Sprintf("%s:%s", sctpHost, sctpPort),
 		},
 		Authentication: &responses.SystemAuthenticationInfo{
 			Local: system.Authentication.Local.Enabled,

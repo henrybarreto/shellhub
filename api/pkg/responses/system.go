@@ -12,6 +12,7 @@ type SystemAuthenticationInfo struct {
 }
 
 type SystemEndpointsInfo struct {
-	API string `json:"api"`
-	SSH string `json:"ssh"`
+	API  string `json:"api"`
+	SSH  string `json:"ssh"`
+	SCTP string `json:"sctp"`
 }

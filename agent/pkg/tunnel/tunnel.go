@@ -57,7 +57,9 @@ func (t *TunnelV2) Listen(ctx context.Context, listener net.Listener) error {
 			log.WithError(err).Trace("failed to accept stream")
 
 			switch {
-			case websocket.IsCloseError(err, websocket.CloseAbnormalClosure):
+			case websocket.IsCloseError(err, websocket.CloseAbnormalClosure),
+				errors.Is(err, io.EOF),
+				errors.Is(err, io.ErrUnexpectedEOF):
 				return errors.Join(ErrTunnelDisconnect, err)
 			}
 

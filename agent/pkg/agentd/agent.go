@@ -117,8 +117,8 @@ type Config struct {
 	MaxRetryConnectionTimeout int `env:"MAX_RETRY_CONNECTION_TIMEOUT,default=60" validate:"min=10,max=120"`
 
 	// TransportVersion specifies the version of the agent transport protocol to use.
-	// Version 1 uses HTTP-based revdial, version 2 uses yamux multiplexing with multistream.
-	// Supported values are 1 and 2. Default is 2.
+	// Version 1 uses HTTP-based revdial, version 2 uses yamux multiplexing with multistream,
+	// version 3 uses native kernel SCTP multi-streaming. Default is 2.
 	TransportVersion int `env:"TRANSPORT_VERSION,default=2"`
 
 	// Version is the agent version reported to the server and embedded in the device info.
@@ -421,6 +421,7 @@ func (a *Agent) Close() error {
 const (
 	TransportV1 = 1
 	TransportV2 = 2
+	TransportV3 = 3
 )
 
 func (a *Agent) Listen(ctx context.Context) error {
@@ -431,6 +432,8 @@ func (a *Agent) Listen(ctx context.Context) error {
 		return a.listenV1(ctx)
 	case TransportV2:
 		return a.listenV2(ctx)
+	case TransportV3:
+		return a.listenV3(ctx)
 	default:
 		return fmt.Errorf("unsupported transport version: %d", a.config.TransportVersion)
 	}
@@ -537,6 +540,59 @@ func (a *Agent) listenV2(ctx context.Context) error {
 			a.listener.Store(&listener)
 
 			a.logger.Info("Server connection established")
+
+			a.listening <- true
+
+			if err := tun.Listen(ctx, listener); err != nil {
+				a.logger.WithError(err).Error("Tunnel listener exited with error")
+			}
+
+			a.listening <- false
+		}
+	}()
+
+	<-ctx.Done()
+
+	return a.Close()
+}
+
+func (a *Agent) listenV3(ctx context.Context) error {
+	tun := tunnel.NewTunnelV2(a.cli)
+
+	tun.Handle(HandleSSHOpenV2, sshHandlerV2(a))
+	tun.Handle(HandleSSHCloseV2, sshCloseHandlerV2(a))
+	tun.Handle(HandleHTTPProxyV2, httpProxyHandlerV2(a))
+
+	go a.ping(ctx, AgentPingDefaultInterval) //nolint:errcheck
+
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		for {
+			if a.isClosed() {
+				a.logger.Info("Stopped listening for connections")
+
+				cancel()
+
+				return
+			}
+
+			a.logger.Debug("Using tunnel version 3 (SCTP)")
+
+			listener, err := a.cli.NewReverseListenerV3(
+				ctx,
+				a.authData.Token,
+				a.serverInfo.Endpoints.SCTP,
+			)
+			if err != nil {
+				a.logger.WithError(err).Error("Failed to connect to server via SCTP reverse tunnel. Retry in 10 seconds")
+
+				time.Sleep(time.Second * 10)
+
+				continue
+			}
+			a.listener.Store(&listener)
+
+			a.logger.Info("Server SCTP connection established")
 
 			a.listening <- true
 

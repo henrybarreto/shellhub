@@ -12,6 +12,7 @@ import (
 	"github.com/shellhub-io/shellhub/pkg/loglevel"
 	"github.com/shellhub-io/shellhub/ssh/http"
 	"github.com/shellhub-io/shellhub/ssh/pkg/dialer"
+	sctpsrv "github.com/shellhub-io/shellhub/ssh/sctp"
 	ssh "github.com/shellhub-io/shellhub/ssh/server"
 	"github.com/shellhub-io/shellhub/ssh/web"
 	log "github.com/sirupsen/logrus"
@@ -30,8 +31,9 @@ type Envs struct {
 	// Allows SSH to connect with an agent via a public key when the agent version is less than 0.6.0.
 	// Agents 0.5.x or earlier do not validate the public key request and may panic.
 	// Please refer to: https://github.com/shellhub-io/shellhub/issues/3453
-	AllowPublickeyAccessBelow060 bool `env:"ALLOW_PUBLIC_KEY_ACCESS_BELLOW_0_6_0,default=false"`
-	WebEndpoints                 bool `env:"SHELLHUB_WEB_ENDPOINTS,default=false"`
+	AllowPublickeyAccessBelow060 bool   `env:"ALLOW_PUBLIC_KEY_ACCESS_BELLOW_0_6_0,default=false"`
+	SCTPPort                     string `env:"SHELLHUB_SCTP_PORT,default=5222"`
+	WebEndpoints                 bool   `env:"SHELLHUB_WEB_ENDPOINTS,default=false"`
 	// WebEndpointsDomain is the dedicated subdomain for web endpoints. When
 	// empty, Domain is used as the fallback. The env key must stay
 	// SHELLHUB_WEB_ENDPOINTS_DOMAIN (not SSH_SHELLHUB_WEB_ENDPOINTS_DOMAIN)
@@ -90,9 +92,9 @@ func main() {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Debugf("listen for HTTP server on %s paniced", ListenAddress)
+				log.Debugf("listen for HTTP server on %s panicked", ListenAddress)
 
-				errs <- fmt.Errorf("listen for HTTP on %s paniced", ListenAddress)
+				errs <- fmt.Errorf("listen for HTTP on %s panicked", ListenAddress)
 			}
 		}()
 
@@ -109,13 +111,31 @@ func main() {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Debugf("listen for SSH server paniced")
+				log.Debugf("listen for SSH server panicked")
 
-				errs <- fmt.Errorf("listen for SSH server paniced")
+				errs <- fmt.Errorf("listen for SSH server panicked")
 			}
 		}()
 
 		errs <- s.ListenAndServe()
+	}()
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Debug("SCTP server panicked")
+
+				errs <- fmt.Errorf("SCTP server panicked")
+			}
+		}()
+
+		sctpAddr := ":" + env.SCTPPort
+		srv := sctpsrv.New(sctpAddr, d, cli)
+
+		if err := srv.ListenAndServe(); err != nil {
+			log.WithError(err).WithField("addr", sctpAddr).Error("SCTP server failed")
+			errs <- err
+		}
 	}()
 
 	if err := <-errs; err != nil {

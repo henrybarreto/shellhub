@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/yamux"
 	"github.com/shellhub-io/shellhub/pkg/revdial"
+	"github.com/shellhub-io/shellhub/pkg/sctpadapter"
 	"github.com/shellhub-io/shellhub/pkg/wsconnadapter"
 	log "github.com/sirupsen/logrus"
 )
@@ -144,13 +145,41 @@ const (
 	TransportVersionUnknown TransportVersion = 0
 	// TransportVersion1 is the legacy transport using revdial over HTTP.
 	TransportVersion1 TransportVersion = 1
-	// TransportVersion2 is the current transport using yamux multiplexing.
+	// TransportVersion2 is the current transport using yamux multiplexing over WebSocket.
 	TransportVersion2 TransportVersion = 2
+	// TransportVersion3 is the current transport using native SCTP multi-streaming.
+	TransportVersion3 TransportVersion = 3
 )
+
+// BindSCTP registers a V3 SCTP Mux for the given device. SCTP has built-in
+// heartbeating so no manual ping loop is required.
+func (m *Manager) BindSCTP(tenant string, uid string, mux *sctpadapter.Mux) error {
+	key := NewKey(tenant, uid)
+
+	m.Connections.Store(key, mux)
+
+	if size := m.Connections.Size(key); size > 1 {
+		log.WithFields(log.Fields{
+			"key":  key,
+			"size": size,
+		}).Warning("Multiple connections stored for the same identifier.")
+	}
+
+	m.DialerKeepAliveCallback(key)
+
+	go func() {
+		<-mux.Done()
+		m.Connections.Delete(key, mux)
+		m.DialerDoneCallback(key)
+	}()
+
+	return nil
+}
 
 // Dial tries to find a connection by its key and dials it.
 //
-// It returns the connection, its version ([TransportVersion1] or [TransportVersion2]) and an error,
+// It returns the connection, its version ([TransportVersion1], [TransportVersion2],
+// or [TransportVersion3]) and an error.
 func (m *Manager) Dial(ctx context.Context, key string) (net.Conn, TransportVersion, error) {
 	loaded, ok := m.Connections.Load(key)
 	if !ok {
@@ -198,6 +227,17 @@ func (m *Manager) Dial(ctx context.Context, key string) (net.Conn, TransportVers
 		}
 
 		return conn, TransportVersion2, nil
+	}
+
+	if mux, ok := loaded.(*sctpadapter.Mux); ok {
+		conn, err := mux.OpenStream()
+		if err != nil {
+			log.WithField("key", key).WithError(err).Error("failed to open SCTP stream for reverse connection")
+
+			return nil, TransportVersionUnknown, err
+		}
+
+		return conn, TransportVersion3, nil
 	}
 
 	return nil, TransportVersionUnknown, ErrNoConnection

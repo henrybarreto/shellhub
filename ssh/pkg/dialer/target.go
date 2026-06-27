@@ -41,6 +41,15 @@ func (t SSHOpenTarget) prepare(conn net.Conn, version TransportVersion) (net.Con
 		if err := json.NewEncoder(conn).Encode(map[string]string{"id": t.SessionID}); err != nil {
 			return nil, err
 		}
+	case TransportVersion3:
+		log.Debug("preparing SSH open target for transport version 3")
+
+		if err := multistream.SelectProtoOrFail(ProtoSSHOpen, conn); err != nil {
+			return nil, err
+		}
+		if err := json.NewEncoder(conn).Encode(map[string]string{"id": t.SessionID}); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("unsupported transport version: %d", version)
 	}
@@ -59,6 +68,13 @@ func (t SSHCloseTarget) prepare(conn net.Conn, version TransportVersion) (net.Co
 			return nil, err
 		}
 	case TransportVersion2:
+		if err := multistream.SelectProtoOrFail(ProtoSSHClose, conn); err != nil {
+			return nil, err
+		}
+		if err := json.NewEncoder(conn).Encode(map[string]string{"id": t.SessionID}); err != nil {
+			return nil, err
+		}
+	case TransportVersion3:
 		if err := multistream.SelectProtoOrFail(ProtoSSHClose, conn); err != nil {
 			return nil, err
 		}
@@ -98,6 +114,27 @@ func (t HTTPProxyTarget) prepare(conn net.Conn, version TransportVersion) (net.C
 			return nil, fmt.Errorf("http proxy handshake failed: %s", resp.Status)
 		}
 	case TransportVersion2:
+		if err := multistream.SelectProtoOrFail(ProtoHTTPProxy, conn); err != nil {
+			return nil, err
+		}
+		if err := json.NewEncoder(conn).Encode(map[string]string{
+			"id":   t.RequestID,
+			"host": t.Host,
+			"port": strconv.Itoa(t.Port),
+		}); err != nil {
+			return nil, err
+		}
+		result := map[string]string{}
+
+		// NOTE: limit the size of the response to avoid DoS via large payloads.
+		const Limit = 512
+		if err := json.NewDecoder(io.LimitReader(conn, Limit)).Decode(&result); err != nil {
+			return nil, err
+		}
+		if result["status"] != "ok" {
+			return nil, fmt.Errorf("http proxy negotiation failed: %s", result["message"])
+		}
+	case TransportVersion3:
 		if err := multistream.SelectProtoOrFail(ProtoHTTPProxy, conn); err != nil {
 			return nil, err
 		}
