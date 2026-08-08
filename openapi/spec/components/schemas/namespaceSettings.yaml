@@ -16,7 +16,3 @@ properties:
     description: When enabled, new devices connecting to the namespace are automatically accepted instead of going to a pending state.
     type: boolean
     example: false
-required:
-  - session_record
-  - connection_announcement
-  - device_auto_accept
