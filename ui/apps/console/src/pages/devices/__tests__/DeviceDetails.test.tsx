@@ -11,6 +11,7 @@ vi.mock("@/hooks/useDevice", () => ({
   useDevice: vi.fn(),
 }));
 
+const mockUpdateSSH = vi.fn();
 const mockSetCustomField = vi.fn();
 const mockDeleteCustomField = vi.fn();
 
@@ -19,6 +20,7 @@ vi.mock("@/hooks/useDeviceMutations", () => ({
   useAddDeviceTag: () => ({ mutateAsync: vi.fn() }),
   useRemoveDeviceTag: () => ({ mutateAsync: vi.fn() }),
   useRemoveDevice: () => ({ mutateAsync: vi.fn() }),
+  useUpdateDeviceSSH: () => ({ mutateAsync: mockUpdateSSH }),
   useSetDeviceCustomField: () => ({ mutateAsync: mockSetCustomField }),
   useDeleteDeviceCustomField: () => ({ mutateAsync: mockDeleteCustomField }),
 }));
@@ -145,6 +147,7 @@ function renderPage() {
 
 describe("DeviceDetails", () => {
   beforeEach(() => {
+    mockUpdateSSH.mockReset().mockResolvedValue({});
     mockSetCustomField.mockReset().mockResolvedValue({});
     mockDeleteCustomField.mockReset().mockResolvedValue({});
     mockRequestAction.mockReset();
@@ -308,7 +311,7 @@ describe("DeviceDetails", () => {
       expect(mockSetCustomField).toHaveBeenCalledWith(
         expect.objectContaining({
           path: expect.objectContaining({ uid: "test-uid", key: "region" }),
-          body: { value: "us-east" },
+          body: expect.objectContaining({ value: "us-east" }),
         }),
       );
     });

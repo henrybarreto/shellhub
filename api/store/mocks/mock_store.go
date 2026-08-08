@@ -1434,6 +1434,69 @@ func (_c *MockStore_DeviceUpdate_Call) RunAndReturn(run func(ctx context.Context
 	return _c
 }
 
+// DeviceUpdateSettings provides a mock function for the type MockStore
+func (_mock *MockStore) DeviceUpdateSettings(ctx context.Context, uid string, settings *models.SSHSettings) error {
+	ret := _mock.Called(ctx, uid, settings)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeviceUpdateSettings")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *models.SSHSettings) error); ok {
+		r0 = returnFunc(ctx, uid, settings)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_DeviceUpdateSettings_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeviceUpdateSettings'
+type MockStore_DeviceUpdateSettings_Call struct {
+	*mock.Call
+}
+
+// DeviceUpdateSettings is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uid string
+//   - settings *models.SSHSettings
+func (_e *MockStore_Expecter) DeviceUpdateSettings(ctx any, uid any, settings any) *MockStore_DeviceUpdateSettings_Call {
+	return &MockStore_DeviceUpdateSettings_Call{Call: _e.mock.On("DeviceUpdateSettings", ctx, uid, settings)}
+}
+
+func (_c *MockStore_DeviceUpdateSettings_Call) Run(run func(ctx context.Context, uid string, settings *models.SSHSettings)) *MockStore_DeviceUpdateSettings_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *models.SSHSettings
+		if args[2] != nil {
+			arg2 = args[2].(*models.SSHSettings)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_DeviceUpdateSettings_Call) Return(err error) *MockStore_DeviceUpdateSettings_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_DeviceUpdateSettings_Call) RunAndReturn(run func(ctx context.Context, uid string, settings *models.SSHSettings) error) *MockStore_DeviceUpdateSettings_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetStats provides a mock function for the type MockStore
 func (_mock *MockStore) GetStats(ctx context.Context, tenantID string) (*models.Stats, error) {
 	ret := _mock.Called(ctx, tenantID)
@@ -2352,6 +2415,69 @@ func (_c *MockStore_NamespaceUpdateMembership_Call) Return(err error) *MockStore
 }
 
 func (_c *MockStore_NamespaceUpdateMembership_Call) RunAndReturn(run func(ctx context.Context, tenantID string, member *models.Member) error) *MockStore_NamespaceUpdateMembership_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// NamespaceUpdateSettings provides a mock function for the type MockStore
+func (_mock *MockStore) NamespaceUpdateSettings(ctx context.Context, tenantID string, patch *models.NamespaceSettingsPatch) error {
+	ret := _mock.Called(ctx, tenantID, patch)
+
+	if len(ret) == 0 {
+		panic("no return value specified for NamespaceUpdateSettings")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *models.NamespaceSettingsPatch) error); ok {
+		r0 = returnFunc(ctx, tenantID, patch)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_NamespaceUpdateSettings_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NamespaceUpdateSettings'
+type MockStore_NamespaceUpdateSettings_Call struct {
+	*mock.Call
+}
+
+// NamespaceUpdateSettings is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tenantID string
+//   - patch *models.NamespaceSettingsPatch
+func (_e *MockStore_Expecter) NamespaceUpdateSettings(ctx any, tenantID any, patch any) *MockStore_NamespaceUpdateSettings_Call {
+	return &MockStore_NamespaceUpdateSettings_Call{Call: _e.mock.On("NamespaceUpdateSettings", ctx, tenantID, patch)}
+}
+
+func (_c *MockStore_NamespaceUpdateSettings_Call) Run(run func(ctx context.Context, tenantID string, patch *models.NamespaceSettingsPatch)) *MockStore_NamespaceUpdateSettings_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *models.NamespaceSettingsPatch
+		if args[2] != nil {
+			arg2 = args[2].(*models.NamespaceSettingsPatch)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_NamespaceUpdateSettings_Call) Return(err error) *MockStore_NamespaceUpdateSettings_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_NamespaceUpdateSettings_Call) RunAndReturn(run func(ctx context.Context, tenantID string, patch *models.NamespaceSettingsPatch) error) *MockStore_NamespaceUpdateSettings_Call {
 	_c.Call.Return(run)
 	return _c
 }

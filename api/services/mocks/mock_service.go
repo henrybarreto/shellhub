@@ -1967,6 +1967,74 @@ func (_c *MockService_GetDevice_Call) RunAndReturn(run func(ctx context.Context,
 	return _c
 }
 
+// GetDeviceSettings provides a mock function for the type MockService
+func (_mock *MockService) GetDeviceSettings(ctx context.Context, req *requests.DeviceGetSettings) (*models.SSHSettings, error) {
+	ret := _mock.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDeviceSettings")
+	}
+
+	var r0 *models.SSHSettings
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *requests.DeviceGetSettings) (*models.SSHSettings, error)); ok {
+		return returnFunc(ctx, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *requests.DeviceGetSettings) *models.SSHSettings); ok {
+		r0 = returnFunc(ctx, req)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*models.SSHSettings)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *requests.DeviceGetSettings) error); ok {
+		r1 = returnFunc(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockService_GetDeviceSettings_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDeviceSettings'
+type MockService_GetDeviceSettings_Call struct {
+	*mock.Call
+}
+
+// GetDeviceSettings is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req *requests.DeviceGetSettings
+func (_e *MockService_Expecter) GetDeviceSettings(ctx any, req any) *MockService_GetDeviceSettings_Call {
+	return &MockService_GetDeviceSettings_Call{Call: _e.mock.On("GetDeviceSettings", ctx, req)}
+}
+
+func (_c *MockService_GetDeviceSettings_Call) Run(run func(ctx context.Context, req *requests.DeviceGetSettings)) *MockService_GetDeviceSettings_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *requests.DeviceGetSettings
+		if args[1] != nil {
+			arg1 = args[1].(*requests.DeviceGetSettings)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockService_GetDeviceSettings_Call) Return(sSHSettings *models.SSHSettings, err error) *MockService_GetDeviceSettings_Call {
+	_c.Call.Return(sSHSettings, err)
+	return _c
+}
+
+func (_c *MockService_GetDeviceSettings_Call) RunAndReturn(run func(ctx context.Context, req *requests.DeviceGetSettings) (*models.SSHSettings, error)) *MockService_GetDeviceSettings_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetNamespace provides a mock function for the type MockService
 func (_mock *MockService) GetNamespace(ctx context.Context, tenantID string) (*models.Namespace, error) {
 	ret := _mock.Called(ctx, tenantID)
@@ -3798,6 +3866,63 @@ func (_c *MockService_UpdateDevice_Call) Return(err error) *MockService_UpdateDe
 }
 
 func (_c *MockService_UpdateDevice_Call) RunAndReturn(run func(ctx context.Context, req *requests.DeviceUpdate) error) *MockService_UpdateDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateDeviceSettings provides a mock function for the type MockService
+func (_mock *MockService) UpdateDeviceSettings(ctx context.Context, req *requests.DeviceUpdateSettings) error {
+	ret := _mock.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateDeviceSettings")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *requests.DeviceUpdateSettings) error); ok {
+		r0 = returnFunc(ctx, req)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockService_UpdateDeviceSettings_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateDeviceSettings'
+type MockService_UpdateDeviceSettings_Call struct {
+	*mock.Call
+}
+
+// UpdateDeviceSettings is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req *requests.DeviceUpdateSettings
+func (_e *MockService_Expecter) UpdateDeviceSettings(ctx any, req any) *MockService_UpdateDeviceSettings_Call {
+	return &MockService_UpdateDeviceSettings_Call{Call: _e.mock.On("UpdateDeviceSettings", ctx, req)}
+}
+
+func (_c *MockService_UpdateDeviceSettings_Call) Run(run func(ctx context.Context, req *requests.DeviceUpdateSettings)) *MockService_UpdateDeviceSettings_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *requests.DeviceUpdateSettings
+		if args[1] != nil {
+			arg1 = args[1].(*requests.DeviceUpdateSettings)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockService_UpdateDeviceSettings_Call) Return(err error) *MockService_UpdateDeviceSettings_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockService_UpdateDeviceSettings_Call) RunAndReturn(run func(ctx context.Context, req *requests.DeviceUpdateSettings) error) *MockService_UpdateDeviceSettings_Call {
 	_c.Call.Return(run)
 	return _c
 }

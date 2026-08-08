@@ -37,6 +37,7 @@ func (s *service) NamespaceCreate(ctx context.Context, input *inputs.NamespaceCr
 		return nil, ErrUserNotFound
 	}
 
+	sshDefaults := models.DefaultSSHSettings()
 	ns := &models.Namespace{
 		Name:                 input.Namespace,
 		Owner:                user.ID,
@@ -56,6 +57,15 @@ func (s *service) NamespaceCreate(ctx context.Context, input *inputs.NamespaceCr
 		Settings: &models.NamespaceSettings{
 			SessionRecord:          true,
 			ConnectionAnnouncement: models.DefaultAnnouncementMessage,
+			AllowPassword:          sshDefaults.AllowPassword,
+			AllowPublicKey:         sshDefaults.AllowPublicKey,
+			AllowRoot:              sshDefaults.AllowRoot,
+			AllowEmptyPasswords:    sshDefaults.AllowEmptyPasswords,
+			AllowTTY:               sshDefaults.AllowTTY,
+			AllowTCPForwarding:     sshDefaults.AllowTCPForwarding,
+			AllowWebEndpoints:      sshDefaults.AllowWebEndpoints,
+			AllowSFTP:              sshDefaults.AllowSFTP,
+			AllowAgentForwarding:   sshDefaults.AllowAgentForwarding,
 		},
 		CreatedAt: clock.Now(),
 		Type:      models.NewDefaultType(),

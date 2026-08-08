@@ -480,7 +480,7 @@ func (s *Session) authenticate(ctx context.Context) error {
 func (s *Session) Recorded(seat int) error {
 	value := true
 
-	if !s.Namespace.Settings.SessionRecord {
+	if s.Namespace.Settings != nil && !s.Namespace.Settings.SessionRecord {
 		return errors.New("record is disable for this namespace")
 	}
 
@@ -661,9 +661,18 @@ func (s *Session) Auth(ctx gliderssh.Context, auth Auth) error {
 		}
 
 		snap.save(sess, StateRegistered)
+		if err := sess.connect(ctx, auth.Auth()); err != nil {
+			return err
+		}
 
-		fallthrough
+		if err := sess.authenticate(ctx); err != nil {
+			return err
+		}
 	case StateRegistered:
+		if err := auth.Evaluate(sess); err != nil {
+			return err
+		}
+
 		if err := sess.connect(ctx, auth.Auth()); err != nil {
 			return err
 		}
@@ -744,6 +753,10 @@ func (s *Session) Announce(client gossh.Channel) error {
 		"Connected to " + s.SSHID + " via ShellHub.\n\r",
 	)); err != nil {
 		return err
+	}
+
+	if s.Namespace.Settings == nil {
+		return nil
 	}
 
 	announcement := s.Namespace.Settings.ConnectionAnnouncement

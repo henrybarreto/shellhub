@@ -66,6 +66,7 @@ func (s *service) CreateNamespace(ctx context.Context, req *requests.NamespaceCr
 		return nil, NewErrNamespaceDuplicated(err)
 	}
 
+	sshDefaults := models.DefaultSSHSettings()
 	ns := &models.Namespace{
 		Name:                 strings.ToLower(req.Name),
 		Owner:                user.ID,
@@ -83,6 +84,15 @@ func (s *service) CreateNamespace(ctx context.Context, req *requests.NamespaceCr
 		Settings: &models.NamespaceSettings{
 			SessionRecord:          true,
 			ConnectionAnnouncement: "",
+			AllowPassword:          sshDefaults.AllowPassword,
+			AllowPublicKey:         sshDefaults.AllowPublicKey,
+			AllowRoot:              sshDefaults.AllowRoot,
+			AllowEmptyPasswords:    sshDefaults.AllowEmptyPasswords,
+			AllowTTY:               sshDefaults.AllowTTY,
+			AllowTCPForwarding:     sshDefaults.AllowTCPForwarding,
+			AllowWebEndpoints:      sshDefaults.AllowWebEndpoints,
+			AllowSFTP:              sshDefaults.AllowSFTP,
+			AllowAgentForwarding:   sshDefaults.AllowAgentForwarding,
 		},
 		TenantID: req.TenantID,
 		Type:     models.NewDefaultType(),
@@ -218,25 +228,39 @@ func (s *service) EditNamespace(ctx context.Context, req *requests.NamespaceEdit
 
 	if req.Name != "" && !strings.EqualFold(req.Name, namespace.Name) {
 		namespace.Name = strings.ToLower(req.Name)
-	}
 
-	if req.Settings.SessionRecord != nil {
-		namespace.Settings.SessionRecord = *req.Settings.SessionRecord
-	}
+		// NamespaceUpdate returns store.ErrDuplicate when the new name collides with an
+		// existing namespace. Map it to ErrNamespaceDuplicated so callers get a
+		// consistent duplicate signal regardless of timing.
+		if err := s.store.NamespaceUpdate(ctx, namespace); err != nil {
+			if errors.Is(err, store.ErrDuplicate) {
+				return nil, NewErrNamespaceDuplicated(err)
+			}
 
-	if req.Settings.ConnectionAnnouncement != nil {
-		namespace.Settings.ConnectionAnnouncement = *req.Settings.ConnectionAnnouncement
-	}
-
-	// NamespaceUpdate returns store.ErrDuplicate when the new name collides with an
-	// existing namespace. Map it to ErrNamespaceDuplicated so callers get a
-	// consistent duplicate signal regardless of timing.
-	if err := s.store.NamespaceUpdate(ctx, namespace); err != nil {
-		if errors.Is(err, store.ErrDuplicate) {
-			return nil, NewErrNamespaceDuplicated(err)
+			return nil, err
 		}
+	}
 
-		return nil, err
+	patch := &models.NamespaceSettingsPatch{
+		SessionRecord:          req.Settings.SessionRecord,
+		ConnectionAnnouncement: req.Settings.ConnectionAnnouncement,
+		AllowPassword:          req.Settings.AllowPassword,
+		AllowPublicKey:         req.Settings.AllowPublicKey,
+		AllowRoot:              req.Settings.AllowRoot,
+		AllowEmptyPasswords:    req.Settings.AllowEmptyPasswords,
+		AllowTTY:               req.Settings.AllowTTY,
+		AllowTCPForwarding:     req.Settings.AllowTCPForwarding,
+		AllowWebEndpoints:      req.Settings.AllowWebEndpoints,
+		AllowSFTP:              req.Settings.AllowSFTP,
+		AllowAgentForwarding:   req.Settings.AllowAgentForwarding,
+	}
+
+	if !patch.IsEmpty() {
+		// NamespaceUpdateSettings applies only the fields present in patch, so a
+		// concurrent edit of a different setting cannot be clobbered by this call.
+		if err := s.store.NamespaceUpdateSettings(ctx, req.Tenant, patch); err != nil {
+			return nil, err
+		}
 	}
 
 	return s.store.NamespaceResolve(ctx, store.NamespaceTenantIDResolver, req.Tenant)
@@ -249,19 +273,13 @@ func (s *service) EditNamespace(ctx context.Context, req *requests.NamespaceEdit
 //
 // This method is deprecated, use [NamespaceService#EditNamespace] instead.
 func (s *service) EditSessionRecordStatus(ctx context.Context, sessionRecord bool, tenantID string) error {
-	n, err := s.store.NamespaceResolve(ctx, store.NamespaceTenantIDResolver, tenantID)
-	if err != nil {
+	if err := s.store.NamespaceUpdateSettings(ctx, tenantID, &models.NamespaceSettingsPatch{SessionRecord: &sessionRecord}); err != nil {
 		switch {
 		case errors.Is(err, store.ErrNoDocuments):
 			return NewErrNamespaceNotFound(tenantID, err)
 		default:
 			return err
 		}
-	}
-
-	n.Settings.SessionRecord = sessionRecord
-	if err := s.store.NamespaceUpdate(ctx, n); err != nil { // nolint:revive
-		return err
 	}
 
 	return nil
@@ -269,19 +287,13 @@ func (s *service) EditSessionRecordStatus(ctx context.Context, sessionRecord boo
 
 // EditDeviceAutoAccept defines if new devices will be automatically accepted.
 func (s *service) EditDeviceAutoAccept(ctx context.Context, deviceAutoAccept bool, tenantID string) error {
-	n, err := s.store.NamespaceResolve(ctx, store.NamespaceTenantIDResolver, tenantID)
-	if err != nil {
+	if err := s.store.NamespaceUpdateSettings(ctx, tenantID, &models.NamespaceSettingsPatch{DeviceAutoAccept: &deviceAutoAccept}); err != nil {
 		switch {
 		case errors.Is(err, store.ErrNoDocuments):
 			return NewErrNamespaceNotFound(tenantID, err)
 		default:
 			return err
 		}
-	}
-
-	n.Settings.DeviceAutoAccept = deviceAutoAccept
-	if err := s.store.NamespaceUpdate(ctx, n); err != nil { // nolint:revive
-		return err
 	}
 
 	return nil

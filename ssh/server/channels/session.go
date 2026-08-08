@@ -11,6 +11,21 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 )
 
+// capabilityDenied checks an SSH capability against the namespace policy and then the
+// per-device override, denying (and logging via denyRequest) as soon as either disables it.
+// A nil settings pointer means that level imposes no restriction.
+func capabilityDenied(namespaceAllowed, deviceAllowed *bool, capability string, denyRequest func(string) bool) bool {
+	if namespaceAllowed != nil && !*namespaceAllowed {
+		return denyRequest(capability + " is disabled for this namespace")
+	}
+
+	if deviceAllowed != nil && !*deviceAllowed {
+		return denyRequest(capability + " is disabled for this device")
+	}
+
+	return false
+}
+
 // KeepAliveRequestTypePrefix Through the time, the [KeepAliveRequestType] type sent from agent to server changed its
 // name, but always keeping the prefix "keepalive". So, to maintain the retro compatibility, we check if this prefix
 // exists and perform the necessary operations.
@@ -270,6 +285,18 @@ func DefaultSessionHandler() gliderssh.ChannelHandler {
 						return
 					}
 
+					denyRequest := func(msg string) bool {
+						logger.Warn(msg)
+
+						if req.WantReply {
+							if err := req.Reply(false, nil); err != nil {
+								logger.WithError(err).Error("failed to deny request from client")
+							}
+						}
+
+						return true
+					}
+
 					switch req.Type {
 					case ShellRequestType:
 						if seat, ok := sess.Seats.Get(seat); ok && seat.HasPty {
@@ -280,10 +307,62 @@ func DefaultSessionHandler() gliderssh.ChannelHandler {
 
 						sess.Event(req.Type, req.Payload, seat)
 					case ExecRequestType, SubsystemRequestType:
+						isSFTP := false
+
+						if req.Type == SubsystemRequestType {
+							var subsystem struct {
+								Subsystem string `ssh:"subsystem"`
+							}
+							if err := gossh.Unmarshal(req.Payload, &subsystem); err != nil {
+								reject(nil, "failed to decode subsystem request")
+
+								return
+							}
+
+							isSFTP = subsystem.Subsystem == "sftp"
+						} else {
+							var exec struct {
+								Command string `ssh:"command"`
+							}
+							if err := gossh.Unmarshal(req.Payload, &exec); err != nil {
+								reject(nil, "failed to decode exec request")
+
+								return
+							}
+
+							isSFTP = strings.Contains(exec.Command, "sftp-server")
+						}
+
+						if isSFTP {
+							var namespaceAllowed, deviceAllowed *bool
+							if sess.Namespace.Settings != nil {
+								namespaceAllowed = &sess.Namespace.Settings.AllowSFTP
+							}
+							if sess.Device.SSH != nil {
+								deviceAllowed = &sess.Device.SSH.AllowSFTP
+							}
+
+							if capabilityDenied(namespaceAllowed, deviceAllowed, "SFTP", denyRequest) {
+								continue
+							}
+						}
+
 						session.Event[models.SSHCommand](sess, req.Type, req.Payload, seat)
 
 						sess.Type = ExecRequestType
 					case PtyRequestType:
+						var namespaceAllowedTTY, deviceAllowedTTY *bool
+						if sess.Namespace.Settings != nil {
+							namespaceAllowedTTY = &sess.Namespace.Settings.AllowTTY
+						}
+						if sess.Device.SSH != nil {
+							deviceAllowedTTY = &sess.Device.SSH.AllowTTY
+						}
+
+						if capabilityDenied(namespaceAllowedTTY, deviceAllowedTTY, "TTY allocation", denyRequest) {
+							continue
+						}
+
 						var pty models.SSHPty
 
 						if err := gossh.Unmarshal(req.Payload, &pty); err != nil {
@@ -302,6 +381,18 @@ func DefaultSessionHandler() gliderssh.ChannelHandler {
 
 						sess.Event(req.Type, dimensions, seat) //nolint:errcheck
 					case AuthRequestOpenSSHRequest:
+						var namespaceAllowedForwarding, deviceAllowedForwarding *bool
+						if sess.Namespace.Settings != nil {
+							namespaceAllowedForwarding = &sess.Namespace.Settings.AllowAgentForwarding
+						}
+						if sess.Device.SSH != nil {
+							deviceAllowedForwarding = &sess.Device.SSH.AllowAgentForwarding
+						}
+
+						if capabilityDenied(namespaceAllowedForwarding, deviceAllowedForwarding, "Agent forwarding", denyRequest) {
+							continue
+						}
+
 						gliderssh.SetAgentRequested(ctx)
 
 						sess.Event(req.Type, req.Payload, seat)

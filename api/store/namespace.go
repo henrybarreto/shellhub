@@ -43,6 +43,12 @@ type NamespaceStore interface {
 	// 	namespace does not exist.
 	NamespaceUpdate(ctx context.Context, namespace *models.Namespace) error
 
+	// NamespaceUpdateSettings atomically applies only the non-nil fields of patch to the namespace's
+	// settings in a single statement. Unlike a read-modify-write through NamespaceUpdate, it never
+	// overwrites fields the caller did not intend to change, so concurrent partial edits cannot clobber
+	// each other. Returns store.ErrNoDocuments if the namespace does not exist.
+	NamespaceUpdateSettings(ctx context.Context, tenantID string, patch *models.NamespaceSettingsPatch) error
+
 	// NamespaceIncrementDeviceCount atomically increments or decrements the device count for a specific status within a namespace.
 	// Returns [ErrNoDocuments] if the namespace is not found.
 	NamespaceIncrementDeviceCount(ctx context.Context, tenantID string, status models.DeviceStatus, count int64) error

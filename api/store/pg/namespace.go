@@ -20,14 +20,38 @@ func (pg *Pg) NamespaceCreate(ctx context.Context, namespace *models.Namespace) 
 	}
 
 	nsEntity := entity.NamespaceFromModel(namespace)
-	if _, err := db.NewInsert().Model(nsEntity).Exec(ctx); err != nil {
-		return "", fromSQLError(err)
+	exec := func(db bun.IDB) error {
+		if _, err := db.NewInsert().Model(nsEntity).Exec(ctx); err != nil {
+			return fromSQLError(err)
+		}
+
+		if nsEntity.Settings != nil {
+			if _, err := db.NewInsert().Model(nsEntity.Settings).Exec(ctx); err != nil {
+				return fromSQLError(err)
+			}
+		}
+
+		if len(nsEntity.Memberships) > 0 {
+			if _, err := db.NewInsert().Model(&nsEntity.Memberships).Exec(ctx); err != nil {
+				return fromSQLError(err)
+			}
+		}
+
+		return nil
 	}
 
-	if len(nsEntity.Memberships) > 0 {
-		if _, err := db.NewInsert().Model(&nsEntity.Memberships).Exec(ctx); err != nil {
-			return "", fromSQLError(err)
+	if _, ok := db.(bun.Tx); ok {
+		if err := exec(db); err != nil {
+			return "", err
 		}
+
+		return namespace.TenantID, nil
+	}
+
+	if err := pg.WithTransaction(ctx, func(txCtx context.Context) error {
+		return exec(pg.GetConnection(txCtx))
+	}); err != nil {
+		return "", err
 	}
 
 	return namespace.TenantID, nil
@@ -75,7 +99,7 @@ func (pg *Pg) NamespaceList(ctx context.Context, opts ...store.QueryOption) ([]m
 	db := pg.GetConnection(ctx)
 
 	entities := make([]entity.Namespace, 0)
-	query := db.NewSelect().Model(&entities)
+	query := db.NewSelect().Model(&entities).Relation("Settings")
 
 	var err error
 	query, err = applyOptions(ctx, query, opts...)
@@ -114,7 +138,7 @@ func (pg *Pg) NamespaceResolve(ctx context.Context, resolver store.NamespaceReso
 	}
 
 	ns := new(entity.Namespace)
-	query := db.NewSelect().Model(ns).Relation("Memberships.User").Where("? = ?", bun.Ident(column), val)
+	query := db.NewSelect().Model(ns).Relation("Memberships.User").Relation("Settings").Where("? = ?", bun.Ident(column), val)
 	if err := query.Scan(ctx); err != nil {
 		return nil, fromSQLError(err)
 	}
@@ -129,6 +153,7 @@ func (pg *Pg) NamespaceGetPreferred(ctx context.Context, userID string) (*models
 	if err := db.NewSelect().
 		Model(ns).
 		Relation("Memberships.User").
+		Relation("Settings").
 		Join("JOIN users").
 		JoinOn("namespace.id = users.preferred_namespace_id OR namespace.id IN (SELECT namespace_id FROM memberships WHERE user_id = users.id)").
 		Where("users.id = ?", userID).
@@ -144,28 +169,144 @@ func (pg *Pg) NamespaceGetPreferred(ctx context.Context, userID string) (*models
 func (pg *Pg) NamespaceUpdate(ctx context.Context, namespace *models.Namespace) error {
 	db := pg.GetConnection(ctx)
 
-	// First check if namespace exists
-	exists, err := db.NewSelect().Model((*entity.Namespace)(nil)).Where("id = ?", namespace.TenantID).Exists(ctx)
-	if err != nil {
-		return fromSQLError(err)
-	}
-	if !exists {
-		return store.ErrNoDocuments
-	}
-
 	n := entity.NamespaceFromModel(namespace)
 	n.UpdatedAt = clock.Now()
 
-	r, err := db.NewUpdate().Model(n).WherePK().Exec(ctx)
-	if err != nil {
-		return fromSQLError(err)
+	exec := func(db bun.IDB) error {
+		// First check if namespace exists.
+		exists, err := db.NewSelect().Model((*entity.Namespace)(nil)).Where("id = ?", namespace.TenantID).Exists(ctx)
+		if err != nil {
+			return fromSQLError(err)
+		}
+		if !exists {
+			return store.ErrNoDocuments
+		}
+
+		r, err := db.NewUpdate().Model(n).WherePK().Exec(ctx)
+		if err != nil {
+			return fromSQLError(err)
+		}
+
+		if rowsAffected, err := r.RowsAffected(); err != nil || rowsAffected == 0 {
+			return store.ErrNoDocuments
+		}
+
+		return nil
 	}
 
-	if rowsAffected, err := r.RowsAffected(); err != nil || rowsAffected == 0 {
-		return store.ErrNoDocuments
+	if _, ok := db.(bun.Tx); ok {
+		return exec(db)
 	}
 
-	return nil
+	return pg.WithTransaction(ctx, func(txCtx context.Context) error {
+		return exec(pg.GetConnection(txCtx))
+	})
+}
+
+// NamespaceUpdateSettings applies only the non-nil fields of patch to the namespace's settings in a
+// single UPDATE statement, so it never depends on (or clobbers) a settings snapshot read earlier by
+// the caller, unlike a full read-modify-write through NamespaceUpdate.
+func (pg *Pg) NamespaceUpdateSettings(ctx context.Context, tenantID string, patch *models.NamespaceSettingsPatch) error {
+	db := pg.GetConnection(ctx)
+
+	exec := func(db bun.IDB) error {
+		now := clock.Now()
+
+		q := db.NewUpdate().Model((*entity.NamespaceSettings)(nil)).Set("updated_at = ?", now)
+
+		legacyQ := db.NewUpdate().Model((*entity.Namespace)(nil)).Set("updated_at = ?", now)
+		touchesLegacy := false
+		touchesSettings := false
+
+		if patch.SessionRecord != nil {
+			q = q.Set("record_sessions = ?", *patch.SessionRecord)
+			legacyQ = legacyQ.Set("record_sessions = ?", *patch.SessionRecord)
+			touchesLegacy = true
+			touchesSettings = true
+		}
+		if patch.ConnectionAnnouncement != nil {
+			q = q.Set("connection_announcement = ?", *patch.ConnectionAnnouncement)
+			legacyQ = legacyQ.Set("connection_announcement = ?", *patch.ConnectionAnnouncement)
+			touchesLegacy = true
+			touchesSettings = true
+		}
+		if patch.DeviceAutoAccept != nil {
+			legacyQ = legacyQ.Set("device_auto_accept = ?", *patch.DeviceAutoAccept)
+			touchesLegacy = true
+		}
+		if patch.AllowPassword != nil {
+			q = q.Set("allow_password = ?", *patch.AllowPassword)
+			touchesSettings = true
+		}
+		if patch.AllowPublicKey != nil {
+			q = q.Set("allow_public_key = ?", *patch.AllowPublicKey)
+			touchesSettings = true
+		}
+		if patch.AllowRoot != nil {
+			q = q.Set("allow_root = ?", *patch.AllowRoot)
+			touchesSettings = true
+		}
+		if patch.AllowEmptyPasswords != nil {
+			q = q.Set("allow_empty_passwords = ?", *patch.AllowEmptyPasswords)
+			touchesSettings = true
+		}
+		if patch.AllowTTY != nil {
+			q = q.Set("allow_tty = ?", *patch.AllowTTY)
+			touchesSettings = true
+		}
+		if patch.AllowTCPForwarding != nil {
+			q = q.Set("allow_tcp_forwarding = ?", *patch.AllowTCPForwarding)
+			touchesSettings = true
+		}
+		if patch.AllowWebEndpoints != nil {
+			q = q.Set("allow_web_endpoints = ?", *patch.AllowWebEndpoints)
+			touchesSettings = true
+		}
+		if patch.AllowSFTP != nil {
+			q = q.Set("allow_sftp = ?", *patch.AllowSFTP)
+			touchesSettings = true
+		}
+		if patch.AllowAgentForwarding != nil {
+			q = q.Set("allow_agent_forwarding = ?", *patch.AllowAgentForwarding)
+			touchesSettings = true
+		}
+
+		if touchesSettings {
+			r, err := q.Where("namespace_id = ?", tenantID).Exec(ctx)
+			if err != nil {
+				return fromSQLError(err)
+			}
+
+			if rowsAffected, err := r.RowsAffected(); err != nil || rowsAffected == 0 {
+				return store.ErrNoDocuments
+			}
+		}
+
+		// record_sessions, connection_announcement and device_auto_accept are also kept on the
+		// namespaces table for backward compatibility; keep both copies in sync.
+		if touchesLegacy {
+			r, err := legacyQ.Where("id = ?", tenantID).Exec(ctx)
+			if err != nil {
+				return fromSQLError(err)
+			}
+
+			if !touchesSettings {
+				if rowsAffected, err := r.RowsAffected(); err != nil || rowsAffected == 0 {
+					return store.ErrNoDocuments
+				}
+			}
+		}
+
+		return nil
+	}
+
+	if _, ok := db.(bun.Tx); ok {
+		return exec(db)
+	}
+
+	return pg.WithTransaction(ctx, func(txCtx context.Context) error {
+		return exec(pg.GetConnection(txCtx))
+	})
 }
 
 func (pg *Pg) NamespaceIncrementDeviceCount(ctx context.Context, tenantID string, status models.DeviceStatus, count int64) error {
@@ -327,9 +468,9 @@ func namespaceExprPreferredOrder() string {
 func NamespaceResolverToString(resolver store.NamespaceResolver) (string, error) {
 	switch resolver {
 	case store.NamespaceTenantIDResolver:
-		return "id", nil
+		return "namespace.id", nil
 	case store.NamespaceNameResolver:
-		return "name", nil
+		return "namespace.name", nil
 	default:
 		return "", store.ErrResolverNotFound
 	}

@@ -1743,6 +1743,17 @@ func TestUpdateDeviceStatus(t *testing.T) {
 					TenantID: "00000000-0000-0000-0000-000000000000",
 					Status:   models.DeviceStatusAccepted,
 					Identity: &models.DeviceIdentity{MAC: "aa:bb:cc:dd:ee:ff"},
+					SSH: &models.SSHSettings{
+						AllowPassword:        false,
+						AllowPublicKey:       true,
+						AllowRoot:            false,
+						AllowEmptyPasswords:  true,
+						AllowTTY:             false,
+						AllowTCPForwarding:   true,
+						AllowWebEndpoints:    false,
+						AllowSFTP:            true,
+						AllowAgentForwarding: false,
+					},
 				}
 				mergedDevice := &models.Device{
 					UID:      "new-device",
@@ -1796,6 +1807,10 @@ func TestUpdateDeviceStatus(t *testing.T) {
 					Once()
 				storeMock.
 					On("DeviceUpdate", ctx, mergedDevice).
+					Return(nil).
+					Once()
+				storeMock.
+					On("DeviceUpdateSettings", ctx, "new-device", oldDevice.SSH).
 					Return(nil).
 					Once()
 				storeMock.
@@ -2552,6 +2567,10 @@ func TestUpdateDeviceStatus_licenseEvaluator(t *testing.T) {
 					Return(nil).
 					Once()
 				storeMock.
+					On("DeviceUpdateSettings", ctx, "new-device", oldDevice.SSH).
+					Return(nil).
+					Once()
+				storeMock.
 					On("DeviceDelete", ctx, oldDevice).
 					Return(nil).
 					Once()
@@ -2788,6 +2807,115 @@ func TestDeviceUpdate(t *testing.T) {
 			test.requiredMocks(ctx)
 
 			err := service.UpdateDevice(ctx, test.req)
+			assert.Equal(t, test.expected, err)
+		})
+	}
+}
+
+func TestGetDeviceSettings(t *testing.T) {
+	storeMock := storemock.NewMockStore(t)
+	queryOptionsMock := storemock.NewMockQueryOptions(t)
+	storeMock.On("Options").Return(queryOptionsMock)
+
+	service := NewService(storeMock, privateKey, publicKey, storecache.NewNullCache(), clientMock)
+
+	t.Run("returns defaults when device settings are nil", func(t *testing.T) {
+		ctx := context.Background()
+		req := &requests.DeviceGetSettings{
+			TenantID:    "00000000-0000-0000-0000-000000000000",
+			DeviceParam: requests.DeviceParam{UID: "device-id"},
+		}
+
+		queryOptionsMock.On("InNamespace", req.TenantID).Return(nil).Once()
+		storeMock.
+			On("DeviceResolve", ctx, store.DeviceUIDResolver, req.UID, mock.AnythingOfType("[]store.QueryOption")).
+			Return(&models.Device{UID: req.UID}, nil).
+			Once()
+
+		settings, err := service.GetDeviceSettings(ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, models.DefaultSSHSettings(), settings)
+	})
+}
+
+func TestUpdateDeviceSettings(t *testing.T) {
+	now := time.Now()
+	storeMock := storemock.NewMockStore(t)
+	queryOptionsMock := storemock.NewMockQueryOptions(t)
+	storeMock.On("Options").Return(queryOptionsMock)
+
+	cases := []struct {
+		description   string
+		req           *requests.DeviceUpdateSettings
+		requiredMocks func(ctx context.Context)
+		expected      error
+	}{
+		{
+			description: "fails when device cannot be resolved",
+			req: &requests.DeviceUpdateSettings{
+				TenantID:    "00000000-0000-0000-0000-000000000000",
+				DeviceParam: requests.DeviceParam{UID: "device-id"},
+			},
+			requiredMocks: func(ctx context.Context) {
+				queryOptionsMock.On("InNamespace", "00000000-0000-0000-0000-000000000000").Return(nil).Once()
+				storeMock.
+					On("DeviceResolve", ctx, store.DeviceUIDResolver, "device-id", mock.AnythingOfType("[]store.QueryOption")).
+					Return(nil, errors.New("error", "", 0)).
+					Once()
+			},
+			expected: NewErrDeviceNotFound(models.UID("device-id"), errors.New("error", "", 0)),
+		},
+		{
+			description: "updates a single device setting",
+			req: &requests.DeviceUpdateSettings{
+				TenantID:    "00000000-0000-0000-0000-000000000000",
+				DeviceParam: requests.DeviceParam{UID: "device-id"},
+				SSHSettingsUpdate: requests.SSHSettingsUpdate{
+					AllowPassword: func() *bool {
+						v := false
+
+						return &v
+					}(),
+				},
+			},
+			requiredMocks: func(ctx context.Context) {
+				device := &models.Device{
+					UID:            "device-id",
+					Name:           "device",
+					DisconnectedAt: &now,
+					SSH:            models.DefaultSSHSettings(),
+				}
+				device.SSH.AllowPassword = true
+				updated := &models.Device{
+					UID:            "device-id",
+					Name:           "device",
+					DisconnectedAt: &now,
+					SSH:            models.DefaultSSHSettings(),
+				}
+				updated.SSH.AllowPassword = false
+
+				queryOptionsMock.On("InNamespace", "00000000-0000-0000-0000-000000000000").Return(nil).Once()
+				storeMock.
+					On("DeviceResolve", ctx, store.DeviceUIDResolver, "device-id", mock.AnythingOfType("[]store.QueryOption")).
+					Return(device, nil).
+					Once()
+				storeMock.
+					On("DeviceUpdateSettings", ctx, "device-id", updated.SSH).
+					Return(nil).
+					Once()
+			},
+			expected: nil,
+		},
+	}
+
+	service := NewService(storeMock, privateKey, publicKey, storecache.NewNullCache(), clientMock)
+
+	for _, test := range cases {
+		t.Run(test.description, func(t *testing.T) {
+			ctx := context.Background()
+			test.requiredMocks(ctx)
+
+			err := service.UpdateDeviceSettings(ctx, test.req)
 			assert.Equal(t, test.expected, err)
 		})
 	}

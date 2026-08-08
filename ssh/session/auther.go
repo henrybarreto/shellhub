@@ -36,6 +36,17 @@ type Auth interface {
 	Evaluate(*Session) error
 }
 
+// settingDisallowed reports whether an SSH capability is disallowed, checking the
+// namespace's setting first and then the device's override. A nil pointer means that
+// level (namespace or device settings not loaded) imposes no restriction.
+func settingDisallowed(namespaceAllowed, deviceAllowed *bool) bool {
+	if namespaceAllowed != nil && !*namespaceAllowed {
+		return true
+	}
+
+	return deviceAllowed != nil && !*deviceAllowed
+}
+
 type publicKeyAuth struct {
 	pk gliderssh.PublicKey
 }
@@ -76,11 +87,35 @@ func (*publicKeyAuth) Auth() authFunc {
 }
 
 func (p *publicKeyAuth) Evaluate(session *Session) error {
+	var namespaceAllowPublicKey, deviceAllowPublicKey *bool
+	if session.Namespace.Settings != nil {
+		namespaceAllowPublicKey = &session.Namespace.Settings.AllowPublicKey
+	}
+	if session.Device != nil && session.Device.SSH != nil {
+		deviceAllowPublicKey = &session.Device.SSH.AllowPublicKey
+	}
+	if settingDisallowed(namespaceAllowPublicKey, deviceAllowPublicKey) {
+		return ErrPublicKeyDisabled
+	}
+
+	if session.Target.Username == "root" {
+		var namespaceAllowRoot, deviceAllowRoot *bool
+		if session.Namespace.Settings != nil {
+			namespaceAllowRoot = &session.Namespace.Settings.AllowRoot
+		}
+		if session.Device != nil && session.Device.SSH != nil {
+			deviceAllowRoot = &session.Device.SSH.AllowRoot
+		}
+		if settingDisallowed(namespaceAllowRoot, deviceAllowRoot) {
+			return ErrRootDisabled
+		}
+	}
+
 	// Versions earlier than 0.6.0 do not validate the user when receiving a public key
 	// authentication request. This implies that requests with invalid users are
 	// treated as "authenticated" because the connection does not raise any error.
 	// Moreover, the agent panics after the connection ends. To avoid this, connections
-	// with public key are not permitted when agent version is 0.5.x or earlier
+	// with public key are not permitted when agent version is 0.5.x or earlier.
 	if !sshconf.AllowPublickeyAccessBelow060 {
 		version := session.Device.Info.Version
 		if version != "latest" {
@@ -137,7 +172,43 @@ func (p *passwordAuth) Auth() authFunc {
 	}
 }
 
-func (*passwordAuth) Evaluate(*Session) error {
-	// We don't need (yet) to do any evaluation when authenticating with password.
+func (p *passwordAuth) Evaluate(session *Session) error {
+	var namespaceAllowPassword, deviceAllowPassword *bool
+	if session.Namespace.Settings != nil {
+		namespaceAllowPassword = &session.Namespace.Settings.AllowPassword
+	}
+	if session.Device != nil && session.Device.SSH != nil {
+		deviceAllowPassword = &session.Device.SSH.AllowPassword
+	}
+	if settingDisallowed(namespaceAllowPassword, deviceAllowPassword) {
+		return ErrPasswordDisabled
+	}
+
+	if session.Target.Username == "root" {
+		var namespaceAllowRoot, deviceAllowRoot *bool
+		if session.Namespace.Settings != nil {
+			namespaceAllowRoot = &session.Namespace.Settings.AllowRoot
+		}
+		if session.Device != nil && session.Device.SSH != nil {
+			deviceAllowRoot = &session.Device.SSH.AllowRoot
+		}
+		if settingDisallowed(namespaceAllowRoot, deviceAllowRoot) {
+			return ErrRootDisabled
+		}
+	}
+
+	if p.pwd == "" {
+		var namespaceAllowEmpty, deviceAllowEmpty *bool
+		if session.Namespace.Settings != nil {
+			namespaceAllowEmpty = &session.Namespace.Settings.AllowEmptyPasswords
+		}
+		if session.Device != nil && session.Device.SSH != nil {
+			deviceAllowEmpty = &session.Device.SSH.AllowEmptyPasswords
+		}
+		if settingDisallowed(namespaceAllowEmpty, deviceAllowEmpty) {
+			return ErrEmptyPasswordNotPermitted
+		}
+	}
+
 	return nil
 }

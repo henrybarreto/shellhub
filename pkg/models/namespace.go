@@ -52,6 +52,66 @@ type NamespaceSettings struct {
 	SessionRecord          bool   `json:"session_record"`
 	ConnectionAnnouncement string `json:"connection_announcement"`
 	DeviceAutoAccept       bool   `json:"device_auto_accept"`
+	AllowPassword          bool   `json:"allow_password"`
+	AllowPublicKey         bool   `json:"allow_public_key"`
+	AllowRoot              bool   `json:"allow_root"`
+	AllowEmptyPasswords    bool   `json:"allow_empty_passwords"`
+	AllowTTY               bool   `json:"allow_tty"`
+	AllowTCPForwarding     bool   `json:"allow_tcp_forwarding"`
+	AllowWebEndpoints      bool   `json:"allow_web_endpoints"`
+	AllowSFTP              bool   `json:"allow_sftp"`
+	AllowAgentForwarding   bool   `json:"allow_agent_forwarding"`
+}
+
+// DefaultNamespaceSettings returns the permissive defaults applied by the namespace_settings
+// migration, used when a namespace's settings row hasn't been created yet.
+func DefaultNamespaceSettings() *NamespaceSettings {
+	return &NamespaceSettings{
+		SessionRecord:        true,
+		AllowPassword:        true,
+		AllowPublicKey:       true,
+		AllowRoot:            true,
+		AllowEmptyPasswords:  true,
+		AllowTTY:             true,
+		AllowTCPForwarding:   true,
+		AllowWebEndpoints:    true,
+		AllowSFTP:            true,
+		AllowAgentForwarding: true,
+	}
+}
+
+// NamespaceSettingsPatch holds a partial update to a namespace's settings. Only non-nil
+// fields are applied, allowing the store layer to update exactly the requested columns in
+// a single statement instead of writing back a full settings row read earlier by the caller.
+type NamespaceSettingsPatch struct {
+	SessionRecord          *bool
+	ConnectionAnnouncement *string
+	DeviceAutoAccept       *bool
+	AllowPassword          *bool
+	AllowPublicKey         *bool
+	AllowRoot              *bool
+	AllowEmptyPasswords    *bool
+	AllowTTY               *bool
+	AllowTCPForwarding     *bool
+	AllowWebEndpoints      *bool
+	AllowSFTP              *bool
+	AllowAgentForwarding   *bool
+}
+
+// IsEmpty reports whether the patch has no fields set, i.e. applying it would be a no-op.
+func (p *NamespaceSettingsPatch) IsEmpty() bool {
+	return p.SessionRecord == nil &&
+		p.ConnectionAnnouncement == nil &&
+		p.DeviceAutoAccept == nil &&
+		p.AllowPassword == nil &&
+		p.AllowPublicKey == nil &&
+		p.AllowRoot == nil &&
+		p.AllowEmptyPasswords == nil &&
+		p.AllowTTY == nil &&
+		p.AllowTCPForwarding == nil &&
+		p.AllowWebEndpoints == nil &&
+		p.AllowSFTP == nil &&
+		p.AllowAgentForwarding == nil
 }
 
 // default Announcement Message for the shellhub namespace

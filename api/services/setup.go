@@ -87,6 +87,15 @@ func (s *service) Setup(ctx context.Context, req requests.Setup) error {
 		Settings: &models.NamespaceSettings{
 			SessionRecord:          false,
 			ConnectionAnnouncement: models.DefaultAnnouncementMessage,
+			AllowPassword:          true,
+			AllowPublicKey:         true,
+			AllowRoot:              true,
+			AllowEmptyPasswords:    true,
+			AllowTTY:               true,
+			AllowTCPForwarding:     true,
+			AllowWebEndpoints:      true,
+			AllowSFTP:              true,
+			AllowAgentForwarding:   true,
 		},
 	}
 
